@@ -26,8 +26,8 @@ public interface BeanFactory {
     Object getBean(String beanName) throws com.minis.beans.BeansException;
 
     /**
-     * 注册一个 BeanDefinition
-     * @param beanDefinition
+     * 注册一个 Bean
+     * @param
      */
-    void registerBeanDefinition(BeanDefinition beanDefinition);
+    void registerBean(String beanName, Object obj);
 }
