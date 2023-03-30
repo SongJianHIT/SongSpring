@@ -23,11 +23,24 @@ public interface BeanFactory {
      * @return
      * @throws BeansException
      */
-    Object getBean(String beanName) throws com.minis.beans.BeansException;
+    Object getBean(String beanName) throws BeansException;
 
     /**
      * 注册一个 Bean
      * @param
      */
     void registerBean(String beanName, Object obj);
+
+    /**
+     * 注册一个 Bean
+     * @param
+     */
+    void registerBeanDefinition(BeanDefinition beanDefinition);
+
+    /**
+     * 判断 bean 是否存在
+     * @param name
+     * @return
+     */
+    Boolean containsBean(String name);
 }

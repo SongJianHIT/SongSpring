@@ -18,8 +18,8 @@ import org.dom4j.Element;
  * @version
  */
 public class XmlBeanDefinitionReader {
-    com.minis.beans.BeanFactory beanFactory;
-    public XmlBeanDefinitionReader(com.minis.beans.BeanFactory beanFactory) {
+    BeanFactory beanFactory;
+    public XmlBeanDefinitionReader(BeanFactory beanFactory) {
         this.beanFactory = beanFactory;
     }
 
