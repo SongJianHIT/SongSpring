@@ -6,6 +6,8 @@
 
 
 import com.minis.ClassPathXmlApplicationContext;
+import com.minis.test.AService;
+
 
 /**
  * Test1
@@ -19,7 +21,7 @@ import com.minis.ClassPathXmlApplicationContext;
 public class Test1 {
     public static void main(String[] args) throws com.minis.beans.BeansException {
         ClassPathXmlApplicationContext ctx = new ClassPathXmlApplicationContext("beans.xml");
-        com.test.com.minis.test.AService aService = (com.test.com.minis.test.AService) ctx.getBean("aservice");
+        AService aService = (AService) ctx.getBean("aservice");
         aService.sayHello();
     }
 }

@@ -1,12 +1,10 @@
-/**
- * @projectName miniSpring
- * @package test
- * @className com.minis.test.AServiceImpl
- */
-package com.test.com.minis.test;
+package com.minis.test;
+
+
+import com.minis.test.AService;
 
 /**
- * AServiceImpl
+ * minis.test.AServiceImpl
  * @description
  * @author SongJian
  * @date 2023/3/29 13:11
