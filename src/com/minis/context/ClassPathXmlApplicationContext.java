@@ -1,26 +1,15 @@
-package com.minis; /**
+package com.minis.context; /**
  * @projectName miniSpring
  * @package PACKAGE_NAME
  * @className PACKAGE_NAME.minis.ClassPathXmlApplicationContext
  */
 
 
-import com.minis.beans.BeanFactory;
-import com.minis.beans.BeansException;
-import com.minis.beans.SimpleBeanFactory;
-import com.minis.beans.XmlBeanDefinitionReader;
+import com.minis.beans.*;
+import com.minis.context.ApplicationEvent;
+import com.minis.context.ApplicationEventPublisher;
 import com.minis.core.ClassPathXmlResource;
 import com.minis.core.Resource;
-import org.dom4j.Document;
-import org.dom4j.DocumentException;
-import org.dom4j.Element;
-import org.dom4j.io.SAXReader;
-
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 /**
  * minis.ClassPathXmlApplicationContext
@@ -34,22 +23,35 @@ import java.util.Map;
  * @version
  */
 
-public class ClassPathXmlApplicationContext implements BeanFactory {
+public class ClassPathXmlApplicationContext implements BeanFactory, ApplicationEventPublisher {
     /**
      * 维护一个 beanFactory
      */
-    BeanFactory beanFactory;
+    SimpleBeanFactory beanFactory;
 
     /**
      * context 负责整合容器的启动过程，读外部配置，解析 Bean 定义，创建 BeanFactory
      * @param fileName
      */
     public ClassPathXmlApplicationContext(String fileName) {
-        Resource resource = new ClassPathXmlResource(fileName);
-        BeanFactory beanFactory = new SimpleBeanFactory();
-        XmlBeanDefinitionReader reader = new XmlBeanDefinitionReader(beanFactory);
-        reader.loadBeanDefinitions(resource);
-        this.beanFactory = beanFactory;
+        this(fileName, false);
+    }
+
+    /**
+     * 构造方法
+     * @param fileName
+     * @param isRefresh 是否要通过 refresh 激活整个 IOC 容器
+     */
+    public ClassPathXmlApplicationContext(String fileName, boolean isRefresh){
+        Resource res = new ClassPathXmlResource(fileName);
+        SimpleBeanFactory bf = new SimpleBeanFactory();
+        XmlBeanDefinitionReader reader = new XmlBeanDefinitionReader(bf);
+        reader.loadBeanDefinitions(res);
+        this.beanFactory = bf;
+
+        if (isRefresh) {
+            this.beanFactory.refresh();
+        }
     }
 
     /**
@@ -71,12 +73,35 @@ public class ClassPathXmlApplicationContext implements BeanFactory {
     }
 
 
+    @Override
+    public boolean isSingleton(String name) {
+        // TODO Auto-generated method stub
+        return false;
+    }
+
+    @Override
+    public boolean isPrototype(String name) {
+        // TODO Auto-generated method stub
+        return false;
+    }
+
+    @Override
+    public Class<?> getType(String name) {
+        // TODO Auto-generated method stub
+        return null;
+    }
+
     public Boolean containsBean(String name) {
         return this.beanFactory.containsBean(name);
     }
 
     public void registerBean(String beanName, Object obj) {
         this.beanFactory.registerBean(beanName, obj);
+    }
+
+    @Override
+    public void publishEvent(ApplicationEvent event) {
+        // TODO 发布事件
     }
 }
 

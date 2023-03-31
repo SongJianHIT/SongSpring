@@ -5,8 +5,6 @@
  */
 package com.minis.beans;
 
-import com.minis.BeanDefinition;
-
 /**
  * BeanFactory
  * @description Bean基础容器，提供：
@@ -17,25 +15,35 @@ import com.minis.BeanDefinition;
  * @version
  */
 public interface BeanFactory {
+
     /**
-     * 根据 bean 名称获取对应的 bean 对象
-     * @param beanName
+     * 获取 bean
+     * @param name
      * @return
      * @throws BeansException
      */
-    Object getBean(String beanName) throws BeansException;
+    Object getBean(String name) throws BeansException;
 
     /**
-     * 注册一个 Bean
-     * @param
+     * 是否是单例
+     * @param name
+     * @return
      */
-    void registerBean(String beanName, Object obj);
+    boolean isSingleton(String name);
 
     /**
-     * 注册一个 Bean
-     * @param
+     * 是否是原型
+     * @param name
+     * @return
      */
-    void registerBeanDefinition(BeanDefinition beanDefinition);
+    boolean isPrototype(String name);
+
+    /**
+     * 获取 Bean 的类型
+     * @param name
+     * @return
+     */
+    Class<?> getType(String name);
 
     /**
      * 判断 bean 是否存在

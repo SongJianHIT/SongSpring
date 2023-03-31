@@ -5,10 +5,12 @@
  */
 package com.minis.beans;
 
-import com.minis.BeanDefinition;
 import com.minis.core.Resource;
 
 import org.dom4j.Element;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * XmlBeanDefinitionReader
@@ -18,9 +20,9 @@ import org.dom4j.Element;
  * @version
  */
 public class XmlBeanDefinitionReader {
-    BeanFactory beanFactory;
-    public XmlBeanDefinitionReader(BeanFactory beanFactory) {
-        this.beanFactory = beanFactory;
+    SimpleBeanFactory simpleBeanFactory;
+    public XmlBeanDefinitionReader(SimpleBeanFactory simpleBeanFactory) {
+        this.simpleBeanFactory = simpleBeanFactory;
     }
 
     /**
@@ -34,8 +36,47 @@ public class XmlBeanDefinitionReader {
             String beanClassName = element.attributeValue("class");
             // String -> Object 的过程
             BeanDefinition beanDefinition = new BeanDefinition(beanID, beanClassName);
+
+            // 处理构造器参数
+            List<Element> constructorElements = element.elements("constructor-arg");
+            ArgumentValues AVS = new ArgumentValues();
+            for (Element e : constructorElements) {
+                String pType = e.attributeValue("type");
+                String pName = e.attributeValue("name");
+                String pValue = e.attributeValue("value");
+                // 注入的配置读入内存
+                AVS.addArgumentValue(new ArgumentValue(pValue, pType, pName));
+            }
+            beanDefinition.setConstructorArgumentValues(AVS);
+
+            // 处理属性
+            List<Element> propertyElements = element.elements("property");
+            PropertyValues PVS = new PropertyValues();
+            List<String> refs = new ArrayList<>();
+            for (Element e : propertyElements) {
+                String pType = e.attributeValue("type");
+                String pName = e.attributeValue("name");
+                String pValue = e.attributeValue("value");
+                String pRef = e.attributeValue("ref");
+                String pV = "";
+                boolean isRef = false;
+                if (pValue != null && !pValue.equals("")) {
+                    isRef = false;
+                    pV = pValue;
+                } else if (pRef != null && !pRef.equals("")) {
+                    isRef = true;
+                    pV = pRef;
+                    refs.add(pRef);
+                }
+                // 注入的配置读入内存
+                PVS.addPropertyValue(new PropertyValue(pType, pName, pV, isRef));
+            }
+            beanDefinition.setPropertyValues(PVS);
+            String[] refArray = refs.toArray(new String[0]);
+            beanDefinition.setDependsOn(refArray);
+            //end of handle properties
             // 使用 beanFactory 提供的抽象方法注册
-            this.beanFactory.registerBeanDefinition(beanDefinition);
+            this.simpleBeanFactory.registerBeanDefinition(beanDefinition);
         }
     }
 }

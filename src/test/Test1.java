@@ -5,7 +5,7 @@
  */
 
 
-import com.minis.ClassPathXmlApplicationContext;
+import com.minis.context.ClassPathXmlApplicationContext;
 import com.minis.test.AService;
 
 
