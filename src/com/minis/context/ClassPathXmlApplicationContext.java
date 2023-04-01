@@ -6,10 +6,16 @@ package com.minis.context; /**
 
 
 import com.minis.beans.*;
-import com.minis.context.ApplicationEvent;
-import com.minis.context.ApplicationEventPublisher;
+import com.minis.beans.factory.BeanFactory;
+import com.minis.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor;
+import com.minis.beans.factory.config.AutowireCapableBeanFactory;
+import com.minis.beans.factory.config.BeanFactoryPostProcessor;
+import com.minis.beans.factory.xml.XmlBeanDefinitionReader;
 import com.minis.core.ClassPathXmlResource;
 import com.minis.core.Resource;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * minis.ClassPathXmlApplicationContext
@@ -23,55 +29,51 @@ import com.minis.core.Resource;
  * @version
  */
 
-public class ClassPathXmlApplicationContext implements BeanFactory, ApplicationEventPublisher {
-    /**
-     * 维护一个 beanFactory
-     */
-    SimpleBeanFactory beanFactory;
+public class ClassPathXmlApplicationContext implements BeanFactory,ApplicationEventPublisher {
+    AutowireCapableBeanFactory beanFactory;
+    private final List<BeanFactoryPostProcessor> beanFactoryPostProcessors =
+            new ArrayList<BeanFactoryPostProcessor>();
 
-    /**
-     * context 负责整合容器的启动过程，读外部配置，解析 Bean 定义，创建 BeanFactory
-     * @param fileName
-     */
     public ClassPathXmlApplicationContext(String fileName) {
-        this(fileName, false);
+        this(fileName, true);
     }
 
-    /**
-     * 构造方法
-     * @param fileName
-     * @param isRefresh 是否要通过 refresh 激活整个 IOC 容器
-     */
-    public ClassPathXmlApplicationContext(String fileName, boolean isRefresh){
+    public ClassPathXmlApplicationContext(String fileName, boolean isRefresh) {
         Resource res = new ClassPathXmlResource(fileName);
-        SimpleBeanFactory bf = new SimpleBeanFactory();
+        AutowireCapableBeanFactory bf = new AutowireCapableBeanFactory();
         XmlBeanDefinitionReader reader = new XmlBeanDefinitionReader(bf);
         reader.loadBeanDefinitions(res);
+
         this.beanFactory = bf;
 
         if (isRefresh) {
-            this.beanFactory.refresh();
+            try {
+                refresh();
+            } catch (IllegalStateException e) {
+                e.printStackTrace();
+            } catch (BeansException e) {
+                e.printStackTrace();
+            }
         }
     }
 
-    /**
-     * context 再对外提供一个 getBean，底下就是调用的 BeanFactory 对应的方法
-     * @param beanName
-     * @return
-     * @throws BeansException
-     */
+    @Override
     public Object getBean(String beanName) throws BeansException {
         return this.beanFactory.getBean(beanName);
     }
 
-    /**
-     * context 再对外提供一个 registerBeanDefinition，底下就是调用的 BeanFactory 对应的方法
-     * @param beanDefinition
-     */
-    public void registerBeanDefinition(BeanDefinition beanDefinition) {
-        this.beanFactory.registerBeanDefinition(beanDefinition);
+    @Override
+    public Boolean containsBean(String name) {
+        return this.beanFactory.containsBean(name);
     }
 
+    public void registerBean(String beanName, Object obj) {
+        this.beanFactory.registerBean(beanName, obj);
+    }
+
+    @Override
+    public void publishEvent(ApplicationEvent event) {
+    }
 
     @Override
     public boolean isSingleton(String name) {
@@ -91,17 +93,30 @@ public class ClassPathXmlApplicationContext implements BeanFactory, ApplicationE
         return null;
     }
 
-    public Boolean containsBean(String name) {
-        return this.beanFactory.containsBean(name);
+    public List<BeanFactoryPostProcessor> getBeanFactoryPostProcessors() {
+        return this.beanFactoryPostProcessors;
     }
 
-    public void registerBean(String beanName, Object obj) {
-        this.beanFactory.registerBean(beanName, obj);
+    public void addBeanFactoryPostProcessor(BeanFactoryPostProcessor postProcessor) {
+        this.beanFactoryPostProcessors.add(postProcessor);
     }
 
-    @Override
-    public void publishEvent(ApplicationEvent event) {
-        // TODO 发布事件
+    public void refresh() throws BeansException, IllegalStateException {
+        // 先注册容器中所有的 BeanPostProcessors
+        // 这样 BeanFactory 里就有解释注解的处理器了，然后在 getBean() 的过程中使用它
+        registerBeanPostProcessors(this.beanFactory);
+
+        // 调用 refresh()
+        onRefresh();
+    }
+
+    private void registerBeanPostProcessors(AutowireCapableBeanFactory bf) {
+        //if (supportAutowire) {
+        bf.addBeanPostProcessor(new AutowiredAnnotationBeanPostProcessor());
+        //}
+    }
+
+    private void onRefresh() {
+        this.beanFactory.refresh();
     }
 }
-

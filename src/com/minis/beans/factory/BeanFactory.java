@@ -3,7 +3,9 @@
  * @package minis.beans
  * @className minis.beans.BeanFactory
  */
-package com.minis.beans;
+package com.minis.beans.factory;
+
+import com.minis.beans.BeansException;
 
 /**
  * BeanFactory

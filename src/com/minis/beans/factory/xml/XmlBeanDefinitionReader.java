@@ -3,8 +3,13 @@
  * @package minis.beans
  * @className minis.beans.XmlBeanDefinitionReader
  */
-package com.minis.beans;
+package com.minis.beans.factory.xml;
 
+import com.minis.beans.*;
+import com.minis.beans.factory.config.BeanDefinition;
+import com.minis.beans.factory.config.ConstructorArgumentValue;
+import com.minis.beans.factory.config.ConstructorArgumentValues;
+import com.minis.beans.factory.support.AbstractBeanFactory;
 import com.minis.core.Resource;
 
 import org.dom4j.Element;
@@ -20,9 +25,9 @@ import java.util.List;
  * @version
  */
 public class XmlBeanDefinitionReader {
-    SimpleBeanFactory simpleBeanFactory;
-    public XmlBeanDefinitionReader(SimpleBeanFactory simpleBeanFactory) {
-        this.simpleBeanFactory = simpleBeanFactory;
+    AbstractBeanFactory beanFactory;
+    public XmlBeanDefinitionReader(AbstractBeanFactory simpleBeanFactory) {
+        this.beanFactory = simpleBeanFactory;
     }
 
     /**
@@ -39,13 +44,13 @@ public class XmlBeanDefinitionReader {
 
             // 处理构造器参数
             List<Element> constructorElements = element.elements("constructor-arg");
-            ArgumentValues AVS = new ArgumentValues();
+            ConstructorArgumentValues AVS = new ConstructorArgumentValues();
             for (Element e : constructorElements) {
                 String pType = e.attributeValue("type");
                 String pName = e.attributeValue("name");
                 String pValue = e.attributeValue("value");
                 // 注入的配置读入内存
-                AVS.addArgumentValue(new ArgumentValue(pValue, pType, pName));
+                AVS.addArgumentValue(new ConstructorArgumentValue(pValue, pType, pName));
             }
             beanDefinition.setConstructorArgumentValues(AVS);
 
@@ -76,7 +81,7 @@ public class XmlBeanDefinitionReader {
             beanDefinition.setDependsOn(refArray);
             //end of handle properties
             // 使用 beanFactory 提供的抽象方法注册
-            this.simpleBeanFactory.registerBeanDefinition(beanDefinition);
+            this.beanFactory.registerBeanDefinition(beanID, beanDefinition);
         }
     }
 }

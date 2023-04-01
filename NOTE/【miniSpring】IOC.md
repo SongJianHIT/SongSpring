@@ -709,19 +709,533 @@ public ClassPathXmlApplicationContext(String fileName, boolean isRefresh){
 }
 ```
 
+### 2.4 增强IOC：支持注解
 
+我们现在通过一系列的操作使 XML 使配置文件生效，然后实现了 Spring 中 Bean 的构造器注入与 setter 注入，通过引入“早期毛胚 Bean”的概念解决了循环依赖的问题，我们还为容器增加了 Spring 中的一个核心方法 `refresh()`，作为整个容器启动的入口。
 
+我们现在实现 **通过注解的方式进行依赖注入**！
 
+#### 目录结构
 
+调整目录结构
 
+```
+├── beans
+│   └── factory
+│       ├── xml
+│       └── support
+│       └── config
+│       └── annotation
+```
 
+接下来将之前所写的类文件移动至新增目录下
 
+```
+factory —— BeanFactory.java
+factory.xml —— XmlBeanDefinitionReader.java
+factory.support —— DefaultSingletonBeanRegistry.java、BeanDefinitionRegistry.java、SimpleBeanFactory.java
+factory.config —— SingletonBeanRegistry.java、ConstructorArgumentValues.java、 ConstructorArgumentValue.java、BeanDefinition.java
 
+// 注：
+// ConstructorArgumentValues由ArgumentValues改名而来
+// ConstructorArgumentValue由ArgumentValue改名而来
+```
 
+#### 注解支持
 
+Autowired 注解是常用的依赖注入的方式，在需要注入的对象上增加 `@Autowired` 注解就可以了
 
+```java
+public class Test {
+  @Autowired
+  private TestAutowired testAutowired;
+}
+```
 
+这种方式的好处在于，**不再需要显式地在 XML 配置文件中使用 `ref` 属性，指定需要依赖的对象，直接在代码中加上这个注解，就能起到同样的依赖注入效果** 。
 
+那么，问题就来了，**我们要在哪一段程序、哪个时机去解释这个注解呢**？
 
+这个注解是作用在一个实例变量上的，为了生效，我们 **首先必须创建好这个对象**，也就是在 `createBean` 时机之后。
 
+回顾前面，我们通过一个 `refresh()` 方法包装了整个 Bean 的创建过程，我们能看到在创建 Bean 实例之后，要进行初始化工作，`refresh()` 方法内预留了 `postProcessBeforeInitialization`、`init-method` 与 `postProcessAfterInitialization` 的位置，根据它们的名称也能看出是在 **初始化前、中、后分别对 Bean 进行处理**。这里就是很好的时机。
 
+我们先定义一个 Bean 处理器 Processor：
+
+```java
+/**
+ * BeanPostProcessor
+ * @description Bean 处理器 Processor
+ * @author SongJian
+ * @date 2023/4/1 16:38
+ * @version
+ */
+public interface BeanPostProcessor {
+
+    /**
+     * Bean 初始化之前执行
+     * @param bean
+     * @param beanName
+     * @return
+     * @throws BeansException
+     */
+    Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException;
+
+    /**
+     * Bean 初始化之后执行
+     * @param bean
+     * @param beanName
+     * @return
+     * @throws BeansException
+     */
+    Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException;
+}
+```
+
+定义 `@AutoWired` 注解：
+
+```java
+/**
+ * Autowired
+ * @description Autowired 注解：
+ *              - 修饰的是字段
+ *              - 运行时生效
+ * @author SongJian
+ * @date 2023/4/1 16:41
+ * @version
+ */
+@Target(ElementType.FIELD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Autowired {
+}
+```
+
+为了实现 `@Autowired` 这个注解，我们很自然地会想到，利用 **反射** 获取所有标注了 `Autowired` 注解的成员变量，把它初始化成一个 Bean，然后注入属性。
+
+结合前面我们定义的 `BeanPostProcessor` 接口，我们来定义 `Autowired` 的处理类 `AutowiredAnnotationBeanPostProcessor`。
+
+```java
+/**
+ * 初始化 Bean 之前的操作
+ * @param bean
+ * @param beanName
+ * @return
+ * @throws BeansException
+ */
+@Override
+public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
+    Object result = bean;
+    // 通过反射拿到 bean 的类
+    Class<?> clazz = result.getClass();
+    // 获取类的所有成员属性
+    Field[] fields = clazz.getDeclaredFields();
+    if(fields!=null){
+        for(Field field : fields){
+            // 对每一个属性，判断是否是被 Autowired 注解所修饰
+            boolean isAutowired = field.isAnnotationPresent(Autowired.class);
+            if(isAutowired){
+                // 如果带有 Autowired 注解
+                String fieldName = field.getName();
+                // 根据属性名称查找同名的 bean
+                Object autowiredObj = this.getBeanFactory().getBean(fieldName);
+                try {
+                    // 通过反射，把找到的 bean 注入到属性中
+                    field.setAccessible(true);
+                    field.set(bean, autowiredObj);
+                    System.out.println("autowire " + fieldName + " for bean " + beanName);
+                } catch (IllegalArgumentException e) {
+                    e.printStackTrace();
+                } catch (IllegalAccessException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+    return result;
+}
+```
+
+判断类里面的每一个属性是不是带有 `Autowired` 注解，如果有，就根据 **属性名** 获取 Bean。从这里我们可以看出，属性名字很关键，我们就是靠它来获取和创建的 Bean。有了 Bean 之后，我们 **通过反射设置属性值，完成依赖注入** 。
+
+#### 创建新的 BeanFactory
+
+在这里我们引入了 `AutowireCapableBeanFactory`，这个 BeanFactory 就是专为 `Autowired` 注入的 Bean 准备的。
+
+在此之前我们已经定义了 `BeanFactory` 接口，以及一个 `SimpleBeanFactory` 的实现类。
+
+现在我们又需要引入另外一个 BeanFactory——`AutowireCapableBeanFactory`。基于代码复用、解耦的原则，我们可以对通用部分代码进行抽象，抽象出一个 `AbstractBeanFactory` 类。
+
+目前，我们可以把 `refresh()`、`getBean()`、`registerBeanDefinition()` 等方法 **提取到抽象类**，因为我们提供了默认实现，确保这些方法即使不再被其他 `BeanFactory` 实现也能正常生效。
+
+```java
+public abstract class AbstractBeanFactory extends DefaultSingletonBeanRegistry implements BeanFactory, BeanDefinitionRegistry {
+    /**
+     * 成熟 Bean 容器（一级缓存）
+     */
+    private Map<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>(256);
+    /**
+     * 存储 BeanDefinition
+     */
+    private List<String> beanDefinitionNames = new ArrayList<>();
+    /**
+     * 早期 Bean 缓存（二级缓存）
+     */
+    private final Map<String, Object> earlySingletonObjects = new HashMap<String, Object>(16);
+
+    public AbstractBeanFactory() {
+    }
+
+    /**
+     * refresh()是一个模板方法， refresh()方法的作用是：
+     * 在创建 IOC 容器前，如果已经有容器存在，则需要把已有的容器销毁和关闭，
+     * 以保证在 refresh 之后使用的是新建立起来的 IOC 容器。refresh 的作用类似于对 IOC 容器的重启，
+     * 在新建立好的容器中对容器进行初始化，对 Bean 定义资源进行载入。
+     * 这里只是简单实现
+     */
+    public void refresh() {
+        for (String beanName : beanDefinitionNames) {
+            try {
+                getBean(beanName);
+            } catch (BeansException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    /**
+     * 获取 Bean
+     * 使用了模板方法设计， Bean 初始化前、中、后的处理，使用抽象类的方式，交给子类实现
+     * @param beanName
+     * @return
+     * @throws BeansException
+     */
+    public Object getBean(String beanName) throws BeansException{
+        // 查一级缓存
+        Object singleton = this.getSingleton(beanName);
+        if (singleton == null) {
+            // 查二级缓存
+            singleton = this.earlySingletonObjects.get(beanName);
+            if (singleton == null) {
+                // 二级缓存中没有获取到
+                System.out.println("get bean null -------------- " + beanName);
+                // 根据 BeanDefinition 获取 Bean 配置
+                BeanDefinition bd = beanDefinitionMap.get(beanName);
+                // 创建 Bean
+                singleton=createBean(bd);
+                // 放入一级缓存
+                this.registerBean(beanName, singleton);
+
+                // beanpostprocessor
+                //step 1 : postProcessBeforeInitialization
+                applyBeanPostProcessorsBeforeInitialization(singleton, beanName);
+
+                //step 2 : init-method
+                if (bd.getInitMethodName() != null && !bd.getInitMethodName().equals("")) {
+                    invokeInitMethod(bd, singleton);
+                }
+
+                //step 3 : postProcessAfterInitialization
+                applyBeanPostProcessorsAfterInitialization(singleton, beanName);
+            }
+
+        }
+        if (singleton == null) {
+            throw new BeansException("bean is null.");
+        }
+        return singleton;
+    }
+
+    private void invokeInitMethod(BeanDefinition bd, Object obj) {
+        Class<?> clz = obj.getClass();
+        Method method = null;
+        try {
+            method = clz.getMethod(bd.getInitMethodName());
+        } catch (NoSuchMethodException e) {
+            e.printStackTrace();
+        } catch (SecurityException e) {
+            e.printStackTrace();
+        }
+        try {
+            method.invoke(obj);
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+        } catch (IllegalArgumentException e) {
+            e.printStackTrace();
+        } catch (InvocationTargetException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public Boolean containsBean(String name) {
+        return containsSingleton(name);
+    }
+
+    public void registerBean(String beanName, Object obj) {
+        this.registerSingleton(beanName, obj);
+
+    }
+
+    @Override
+    public void registerBeanDefinition(String name, BeanDefinition bd) {
+        this.beanDefinitionMap.put(name,bd);
+        this.beanDefinitionNames.add(name);
+        if (!bd.isLazyInit()) {
+            try {
+                getBean(name);
+            } catch (BeansException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+        }
+    }
+
+    @Override
+    public void removeBeanDefinition(String name) {
+        this.beanDefinitionMap.remove(name);
+        this.beanDefinitionNames.remove(name);
+        this.removeSingleton(name);
+
+    }
+
+    @Override
+    public BeanDefinition getBeanDefinition(String name) {
+        return this.beanDefinitionMap.get(name);
+    }
+
+    @Override
+    public boolean containsBeanDefinition(String name) {
+        return this.beanDefinitionMap.containsKey(name);
+    }
+
+    @Override
+    public boolean isSingleton(String name) {
+        return this.beanDefinitionMap.get(name).isSingleton();
+    }
+
+    @Override
+    public boolean isPrototype(String name) {
+        return this.beanDefinitionMap.get(name).isPrototype();
+    }
+
+    @Override
+    public Class<?> getType(String name) {
+        return this.beanDefinitionMap.get(name).getClass();
+    }
+
+    /**
+     * 创建 Bean 对象，包括构造器注入和属性注入
+     * @param bd
+     * @return
+     */
+    private Object createBean(BeanDefinition bd) {
+        Class<?> clz = null;
+        // 构造器注入
+        Object obj = doCreateBean(bd);
+        // 创建完成的早期 Bean 加入二级缓存
+        this.earlySingletonObjects.put(bd.getId(), obj);
+        try {
+            clz = Class.forName(bd.getClassName());
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        // 处理属性注入，有了二级缓存可解决循环依赖问题
+        populateBean(bd, clz, obj);
+        return obj;
+    }
+
+    /**
+     * 创建早期 bean，处理构造器注入
+     * @param bd
+     * @return
+     */
+    private Object doCreateBean(BeanDefinition bd) {
+      // 省略
+    }
+
+    /**
+     * 处理属性注入
+     * @param bd
+     * @param clz
+     * @param obj
+     */
+    private void populateBean(BeanDefinition bd, Class<?> clz, Object obj) {
+        handleProperties(bd, clz, obj);
+    }
+
+    /**
+     * 处理 BeanDefinition 中的属性注入
+     * @param bd
+     * @param clz
+     * @param obj
+     */
+    private void handleProperties(BeanDefinition bd, Class<?> clz, Object obj) {
+        // 省略
+    }
+
+    /**
+     * 模板方法
+     * 关键改动：Bean 处理类初始化之前执行的方法
+     * @param existingBean
+     * @param beanName
+     * @return
+     * @throws BeansException
+     */
+    abstract public Object applyBeanPostProcessorsBeforeInitialization(Object existingBean, String beanName)
+            throws BeansException;
+
+    /**
+     * 模板方法
+     * 关键改动：Bean 处理类初始化之后执行的方法
+     * @param existingBean
+     * @param beanName
+     * @return
+     * @throws BeansException
+     */
+    abstract public Object applyBeanPostProcessorsAfterInitialization(Object existingBean, String beanName)
+            throws BeansException;
+}
+```
+
+我们需要关注两个核心的改动。
+
+- 定义了抽象方法 `applyBeanPostProcessorBeforeInitialization` 与 `applyBeanPostProcessorAfterInitialization`，由名字可以看出，分别是在 Bean 处理类初始化之前和之后执行的方法。这两个方法交给具体的继承类去实现。
+- 在 `getBean()` 方法中，在以前预留的位置，实现了对 Bean 初始化前、初始化和初始化后的处理。
+
+现在已经抽象出了一个 `AbstractBeanFactory`，接下来我们看看具体的 `AutowireCapableBeanFactory` 是如何实现的。
+
+```java
+public class AutowireCapableBeanFactory extends AbstractBeanFactory {
+    /**
+     * 列表 beanPostProcessors 记录所有的 Bean 处理器
+     * 可以按照需求注册若干个不同用途的处理器，然后调用处理器。
+     */
+    private final List<AutowiredAnnotationBeanPostProcessor> beanPostProcessors = new ArrayList<AutowiredAnnotationBeanPostProcessor>();
+
+    /**
+     * 添加 Bean 处理器
+     * @param beanPostProcessor
+     */
+    public void addBeanPostProcessor(AutowiredAnnotationBeanPostProcessor beanPostProcessor) {
+        this.beanPostProcessors.remove(beanPostProcessor);
+        this.beanPostProcessors.add(beanPostProcessor);
+    }
+
+    /**
+     * 获取 Bean 处理器数量
+     * @return
+     */
+    public int getBeanPostProcessorCount() {
+        return this.beanPostProcessors.size();
+    }
+
+    /**
+     * 获取 Bean 处理器列表
+     * @return
+     */
+    public List<AutowiredAnnotationBeanPostProcessor> getBeanPostProcessors() {
+        return this.beanPostProcessors;
+    }
+
+    /**
+     * Bean 初始化之前调用处理器
+     * @param existingBean
+     * @param beanName
+     * @return
+     * @throws BeansException
+     */
+    public Object applyBeanPostProcessorsBeforeInitialization(Object existingBean, String beanName)
+            throws BeansException {
+
+        Object result = existingBean;
+        for (AutowiredAnnotationBeanPostProcessor beanProcessor : getBeanPostProcessors()) {
+            // 对每个 Bean 处理器，调用 postProcessBeforeInitialization
+            beanProcessor.setBeanFactory(this);
+            result = beanProcessor.postProcessBeforeInitialization(result, beanName);
+            if (result == null) {
+                return result;
+            }
+        }
+        return result;
+    }
+
+    public Object applyBeanPostProcessorsAfterInitialization(Object existingBean, String beanName)
+            throws BeansException {
+        Object result = existingBean;
+        for (BeanPostProcessor beanProcessor : getBeanPostProcessors()) {
+            result = beanProcessor.postProcessAfterInitialization(result, beanName);
+            if (result == null) {
+                return result;
+            }
+        }
+        return result;
+    }
+}
+```
+
+最后则是调整 `ClassPathXmlApplicationContext`，引入的成员变量由 `SimpleBeanFactory` 改为新建的 `AutowireCapableBeanFactory`，并在构造函数里增加上下文刷新逻辑。
+
+#### 整体流程
+
+1. 启动 `ClassPathXmlApplicationContext` 容器，执行 `refresh()`。
+
+2. 在 `refresh` 执行过程中，调用 `registerBeanPostProcessors()`，往 `BeanFactory` 里 **注册 Bean 处理器**，如 `AutowiredAnnotationBeanPostProcessor`。
+
+3. 执行 `onRefresh()`， 执行 `AbstractBeanFactory` 的 `refresh()` 方法。
+
+4. `AbstractBeanFactory` 的 `refresh()` 获取所有 Bean 的定义，执行 `getBean()` 创建 Bean 实例。
+
+5. `getBean()` **创建完 Bean 实例后，调用 Bean 处理器并初始化** 。
+
+   ```java
+   // 二级缓存中没有获取到
+   System.out.println("get bean null -------------- " + beanName);
+   // 根据 BeanDefinition 获取 Bean 配置
+   BeanDefinition bd = beanDefinitionMap.get(beanName);
+   // 创建 Bean
+   singleton=createBean(bd);
+   // 放入一级缓存
+   this.registerBean(beanName, singleton);
+   
+   // beanpostprocessor
+   //step 1 : postProcessBeforeInitialization
+   applyBeanPostProcessorsBeforeInitialization(singleton, beanName);
+   
+   //step 2 : init-method
+   if (bd.getInitMethodName() != null && !bd.getInitMethodName().equals("")) {
+       invokeInitMethod(bd, singleton);
+   }
+   
+   //step 3 : postProcessAfterInitialization
+   applyBeanPostProcessorsAfterInitialization(singleton, beanName);
+   ```
+
+6. `applyBeanPostProcessorBeforeInitialization` 由具体的 `BeanFactory`，如 `AutowireCapableBeanFactory`，来实现，这个实现也很简单，就是对 BeanFactory 里已经注册好的所有 Bean 处理器调用相关方法。
+
+   ```java
+   /**
+    * Bean 初始化之前调用处理器
+    * @param existingBean
+    * @param beanName
+    * @return
+    * @throws BeansException
+    */
+   public Object applyBeanPostProcessorsBeforeInitialization(Object existingBean, String beanName)
+           throws BeansException {
+   
+       Object result = existingBean;
+       for (AutowiredAnnotationBeanPostProcessor beanProcessor : getBeanPostProcessors()) {
+           // 对每个 Bean 处理器，调用 postProcessBeforeInitialization
+           beanProcessor.setBeanFactory(this);
+           result = beanProcessor.postProcessBeforeInitialization(result, beanName);
+           if (result == null) {
+               return result;
+           }
+       }
+       return result;
+   }
+   ```
+
+7. 我们事先准备好的 `AutowiredAnnotationBeanPostProcessor` 方法里面会解释 Bean 中的 `Autowired` 注解。
+
+![image-20230401174609195](./【miniSpring】IOC.assets/image-20230401174609195.png)

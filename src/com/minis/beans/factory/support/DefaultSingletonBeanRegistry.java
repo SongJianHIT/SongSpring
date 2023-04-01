@@ -1,9 +1,11 @@
 /**
  * @projectName SongSpring
  * @package com.minis.beans
- * @className com.minis.beans.DefaultSingletonBeanRegistry
+ * @className com.minis.beans.factory.support.DefaultSingletonBeanRegistry
  */
-package com.minis.beans;
+package com.minis.beans.factory.support;
+
+import com.minis.beans.factory.config.SingletonBeanRegistry;
 
 import java.util.ArrayList;
 import java.util.List;

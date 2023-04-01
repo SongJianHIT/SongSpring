@@ -1,9 +1,9 @@
 /**
  * @projectName SongSpring
  * @package com.minis.beans
- * @className com.minis.beans.SingletonBeanRegistry
+ * @className com.minis.beans.factory.config.SingletonBeanRegistry
  */
-package com.minis.beans;
+package com.minis.beans.factory.config;
 
 /**
  * SingletonBeanRegistry
