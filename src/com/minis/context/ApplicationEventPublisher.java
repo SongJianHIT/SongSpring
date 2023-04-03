@@ -16,8 +16,17 @@ package com.minis.context;
  * @version
  */
 
-
 public interface ApplicationEventPublisher {
+    /**
+     * 发布事件
+     * @param event
+     */
     void publishEvent(ApplicationEvent event);
+
+    /**
+     * 添加 Application 事件监听
+     * @param listener
+     */
+    void addApplicationListener(ApplicationListener listener);
 }
 

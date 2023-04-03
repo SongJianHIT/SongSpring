@@ -33,11 +33,11 @@ public abstract class AbstractBeanFactory extends DefaultSingletonBeanRegistry i
     /**
      * 成熟 Bean 容器（一级缓存）
      */
-    private Map<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>(256);
+    protected Map<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>(256);
     /**
      * 存储 BeanDefinition
      */
-    private List<String> beanDefinitionNames = new ArrayList<>();
+    protected List<String> beanDefinitionNames = new ArrayList<>();
     /**
      * 早期 Bean 缓存（二级缓存）
      */

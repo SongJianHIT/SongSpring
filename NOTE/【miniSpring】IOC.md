@@ -1239,3 +1239,124 @@ public class AutowireCapableBeanFactory extends AbstractBeanFactory {
 7. 我们事先准备好的 `AutowiredAnnotationBeanPostProcessor` 方法里面会解释 Bean 中的 `Autowired` 注解。
 
 ![image-20230401174609195](./【miniSpring】IOC.assets/image-20230401174609195.png)
+
+### 2.5 增强Bean Factory扩展性
+
+增强 BeanFactory 的扩展性，使它具有不同的特性。
+
+在 Java 语言的设计中，**一个 Interface 代表的是一种特性或者能力**，我们把这些特性或能力一个个抽取出来，各自独立互不干扰。如果一个具体的类，想具备某些特性或者能力，就去实现这些 interface，随意组合。这是一种良好的设计原则，叫 **interface segregation（接口隔离原则）**。
+
+我们新增 4 个接口：
+
+- ListableBeanFactory
+- ConfigurableBeanFactory
+- ConfigurableListableBeanFactory
+- EnvironmentCapable
+
+**将 Factory 内部管理的 Bean 作为一个集合来对待**，获取 Bean 的数量，得到所有 Bean 的名字，按照某个类型获取 Bean 列表等等。这个特性就定义在 `ListableBeanFactory` 中：
+
+```java
+public interface ListableBeanFactory extends BeanFactory {
+    boolean containsBeanDefinition(String beanName);
+    int getBeanDefinitionCount();
+    String[] getBeanDefinitionNames();
+    String[] getBeanNamesForType(Class<?> type);
+    <T> Map<String, T> getBeansOfType(Class<T> type) throws BeansException;
+}
+```
+
+**将维护 Bean 之间的依赖关系以及支持 Bean 处理器也看作一个独立的特性**，这个特性定义在 `ConfigurableBeanFactory` 接口中：
+
+```java
+public interface ConfigurableBeanFactory extends BeanFactory,SingletonBeanRegistry {
+    String SCOPE_SINGLETON = "singleton";
+    String SCOPE_PROTOTYPE = "prototype";
+    void addBeanPostProcessor(BeanPostProcessor beanPostProcessor);
+    int getBeanPostProcessorCount();
+    void registerDependentBean(String beanName, String dependentBeanName);
+    String[] getDependentBeans(String beanName);
+    String[] getDependenciesForBean(String beanName);
+}
+```
+
+还可以集成，用一个 `ConfigurableListableBeanFactory` 接口把 `AutowireCapableBeanFactory`、`ListableBeanFactory` 和 `ConfigurableBeanFactory` 合并在一起：
+
+```java
+package com.minis.beans.factory.config;
+import com.minis.beans.factory.ListableBeanFactory;
+public interface ConfigurableListableBeanFactory extends ListableBeanFactory, AutowireCapableBeanFactory, ConfigurableBeanFactory {
+}
+```
+
+由于 `ConfigurableListableBeanFactory` 继承了 `AutowireCapableBeanFactory`，所以我们需要调整之前定义的 `AutowireCapableBeanFactory`，由 class 改为 interface。
+
+新增抽象类 `AbstractAutowireCapableBeanFactory` 替代原有的实现类。
+
+```java
+public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFactory implements AutowireCapableBeanFactory {
+    private final List<BeanPostProcessor> beanPostProcessors = new ArrayList<BeanPostProcessor>();
+    
+    public void addBeanPostProcessor(BeanPostProcessor beanPostProcessor) {
+        this.beanPostProcessors.remove(beanPostProcessor);
+        this.beanPostProcessors.add(beanPostProcessor);
+    }
+    public int getBeanPostProcessorCount() {
+        return this.beanPostProcessors.size();
+    }
+    public List<BeanPostProcessor> getBeanPostProcessors() {
+        return this.beanPostProcessors;
+    }
+    public Object applyBeanPostProcessorsBeforeInitialization(Object existingBean, String beanName)
+            throws BeansException {
+        Object result = existingBean;
+        for (BeanPostProcessor beanProcessor : getBeanPostProcessors()) {
+            beanProcessor.setBeanFactory(this);
+            result = beanProcessor.postProcessBeforeInitialization(result, beanName);
+            if (result == null) {
+                return result;
+            }
+        }
+        return result;
+    }
+    public Object applyBeanPostProcessorsAfterInitialization(Object existingBean, String beanName)
+            throws BeansException {
+        Object result = existingBean;
+        for (BeanPostProcessor beanProcessor : getBeanPostProcessors()) {
+            result = beanProcessor.postProcessAfterInitialization(result, beanName);
+            if (result == null) {
+                return result;
+            }
+        }
+        return result;
+    }   
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
